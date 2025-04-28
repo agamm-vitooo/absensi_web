@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+model User {
+  id        Int      @id @default(autoincrement())
+  nama      String
+  email     String   @unique
+  password  String
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  siswa     Siswa?
+  guru      Guru?
+}
+
+model Siswa {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int      @unique
+  nisn      String
+  kelas     String
+  jurusan   String
+  absensi   Absensi[]
+}
+
+model Guru {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int      @unique
+  nip       String
+  mapel     String
+  absensi   Absensi[] // ← Tambahkan ini
+}
+
+model Absensi {
+  id         Int      @id @default(autoincrement())
+  siswa      Siswa    @relation(fields: [siswaId], references: [id])
+  siswaId    Int
+  guru       Guru?    @relation(fields: [guruId], references: [id])
+  guruId     Int?
+  tanggal    DateTime
+  status     Status
+  keterangan String?
+  waktuAbsen DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  GURU
+  SISWA
+}
+
+enum Status {
+  HADIR
+  SAKIT
+  IZIN
+  ALFA
+}
