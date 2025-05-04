@@ -1,43 +1,98 @@
 // controller/auth.controllers.js
-import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { PrismaClient } from "@prisma/client";
+import { JWT_SECRET } from "../config.js";
+import { successResponse, errorResponse } from "../utils/responseFormatter.js";
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
 export const register = async(req, res) => {
     const { nama, email, password, role } = req.body;
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return res.status(400).json({ message: "Email sudah terdaftar" });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await prisma.user.create({
-        data: {
-            nama,
-            email,
-            password: hashedPassword,
-            role
+    try {
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+            return errorResponse(res, "Email sudah terdaftar", null, 400);
         }
-    });
 
-    res.status(201).json({ message: "Register berhasil", user });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const user = await prisma.user.create({
+            data: { nama, email, password: hashedPassword, role },
+        });
+
+        return successResponse(res, "Pengguna berhasil didaftarkan", {
+            id: user.id,
+            nama: user.nama,
+            email: user.email,
+            role: user.role,
+        });
+    } catch (error) {
+        return errorResponse(res, "Gagal mendaftarkan pengguna", error, 500);
+    }
 };
 
 export const login = async(req, res) => {
     const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+    try {
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            return errorResponse(res, "Email atau kata sandi salah", null, 400);
+        }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: "Password salah" });
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) {
+            return errorResponse(res, "Email atau kata sandi salah", null, 400);
+        }
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, {
-        expiresIn: "7d",
-    });
+        const token = jwt.sign({ id: user.id, email: user.email, role: user.role },
+            JWT_SECRET, { expiresIn: "1h" }
+        );
 
-    res.json({ message: "Login berhasil", token, user });
+        return successResponse(res, "Berhasil login", { token });
+    } catch (error) {
+        return errorResponse(res, "Gagal login", error, 500);
+    }
+};
+
+// POST /api/logout
+export const logout = async(req, res) => {
+    const token = req.token;
+
+    try {
+        // Decode token untuk ambil expired-nya
+        const decoded = jwt.decode(token);
+
+        if (!decoded || !decoded.exp) {
+            return errorResponse(res, "Token tidak valid", null, 400);
+        }
+
+        // Konversi exp dari detik ke milidetik
+        const expiredAt = new Date(decoded.exp * 1000);
+
+        await prisma.blacklistedToken.create({
+            data: {
+                token,
+                expiredAt,
+            },
+        });
+
+        return successResponse(res, "Berhasil logout", null);
+    } catch (error) {
+        return errorResponse(res, "Gagal logout", error, 500);
+    }
+};
+
+export const getProfile = async(req, res) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: { id: true, nama: true, email: true, role: true },
+        });
+
+        return successResponse(res, "Profil berhasil diambil", user);
+    } catch (error) {
+        return errorResponse(res, "Gagal mengambil profil", error, 500);
+    }
 };

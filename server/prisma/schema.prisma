@@ -56,6 +56,13 @@ model Absensi {
   waktuAbsen DateTime @default(now())
 }
 
+model BlacklistedToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  expiredAt DateTime
+  createdAt DateTime @default(now())
+}
+
 enum Role {
   ADMIN
   GURU
